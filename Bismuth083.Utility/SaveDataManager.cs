@@ -3,11 +3,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Text.Json;
+using System.Text.Encodings.Web;
 
 namespace Bismuth083.Utility
 {
-  internal class SaveDataManager
+  public class SaveDataManager
   {
+    // TODO: データファイルパスの取り扱いを再考する。
 
     public string DirectoryPath { get; init; }
     private readonly JsonSerializerOptions jsonOptions = new JsonSerializerOptions
@@ -18,17 +21,18 @@ namespace Bismuth083.Utility
     private readonly SaveMode saveMode;
     private readonly TextEncryptor? textEncryptor;
 
-
     /// <summary>
     /// SaveDataManagerのコンストラクター。ディレクトリのパスとPassWordを指定してください。
     /// </summary>
-    /// <param name="directoryPath">ディレクトリパス。</param>
+    /// <param name="directoryPath">ここで指定したディレクトリにSaveDataディレクトリを作成します。</param>
     /// <param name="password">暗号化する場合は必要です。1-32文字の半角文字で指定してください。パスワードを変更するとセーブデータが復号できなくなります。</param>
     /// <param name="saveMode">デフォルトでEncryptedが指定されます。Encryptedならパスワードによる暗号化が行われ、UnEncryptedならパスワードによる暗号化は行われません。</param>
     /// <exception cref="ArgumentException"></exception>
-    public SaveDataManager(string directoryPath, SaveMode saveMode = SaveMode.Encrypted, string password = "")
+    public SaveDataManager(string directoryLocation, SaveMode saveMode = SaveMode.Encrypted, string password = "")
     {
       // ディレクトリの検証、初期化
+      const string SaveDataDirectoryName = "SaveData/";
+      string directoryPath = NormalizeDirectoryPath(directoryLocation) + SaveDataDirectoryName;
       if (!Directory.Exists(directoryPath))
       {
         Directory.CreateDirectory(directoryPath);
@@ -65,7 +69,12 @@ namespace Bismuth083.Utility
         case SaveMode.UnEncrypted:
           break;
       }
+
       string filePath = SlotNameToPath(slotName);
+      if (!File.Exists(Path.GetDirectoryName(filePath)))
+      {
+         Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+      }
 
       using (var sw = new StreamWriter(filePath, false, Encoding.UTF8))
       using (var ws = TextWriter.Synchronized(sw))
@@ -82,13 +91,15 @@ namespace Bismuth083.Utility
       {
         return (false, default(T));
       }
+
+      string saveDataText;
+
       using (var sr = new StreamReader(filePath, Encoding.UTF8))
       using (var tr = TextReader.Synchronized(sr))
       {
-        tr.ReadToEnd();
+        saveDataText = tr.ReadToEnd();
       }
 
-      string saveDataText = File.ReadAllText(filePath);
       switch (saveMode)
       {
         case SaveMode.Encrypted:
@@ -102,9 +113,10 @@ namespace Bismuth083.Utility
       return (true, t);
     }
 
-    public IEnumerable<string> GetSlotNames(string constraint = "*.json")
+    public IEnumerable<string> GetSlotNames(string constraint = "*")
     {
-      var fileNames = Directory.EnumerateFiles(DirectoryPath, constraint, SearchOption.AllDirectories);
+      var fileNames = Directory.EnumerateFiles(DirectoryPath, constraint+".sav", SearchOption.AllDirectories)
+        .Select(x => NormalizeDirectoryPath(x));
       var SlotNames = new HashSet<string>();
       foreach (var fileName in fileNames!)
       {
@@ -116,7 +128,7 @@ namespace Bismuth083.Utility
       return SlotNames;
     }
 
-    public IEnumerable<(string, T)> GetSlots<T>(string constraint = "*.json")
+    public IEnumerable<(string, T)> GetSlots<T>(string constraint = "*")
     {
       var slotNames = GetSlotNames(constraint);
       var values = new HashSet<(string, T)>();
@@ -127,16 +139,17 @@ namespace Bismuth083.Utility
       }
       return values;
     }
-
-
-    public bool CopySlot(string SlotName, string NewSlotName)
+    
+    // bool
+    public void CopySlot(string SlotName, string NewSlotName)
     {
 
 
 
     }
 
-    public bool CopySlot<T>(string SlotName, string NewSlotName, Func<T> withExpressiony)
+    // bool
+    public void CopySlot<T>(string SlotName, string NewSlotName, Func<T> withExpressiony)
     {
 
 
@@ -154,30 +167,36 @@ namespace Bismuth083.Utility
       // Todo: ディレクトリ内のすべてのセーブデータを削除する。
     }
 
+    private string NormalizeDirectoryPath(string path)
+    {
+      string newPath = path.Replace("\\", "/");
+      newPath = newPath.TrimEnd('/');
+      newPath += "/";
+      return newPath;
+    }
+
     private string SlotNameToPath(string slotName)
     {
-      return Path.Combine(this.DirectoryPath, slotName, ".json");
+      return String.Concat(DirectoryPath, slotName, ".sav");
     }
 
-    private static string? FileNameToSlotName(string fileName)
+    private string? FileNameToSlotName(string fileName)
     {
       string? slotName = null;
-      if (fileName.Contains(".json")) { slotName = fileName.Substring(fileName.IndexOf(".json")); }
-      return slotName;
+      if (fileName.Contains(".sav")) {
+        slotName = fileName.Substring(0,fileName.IndexOf(".sav")).Replace(this.DirectoryPath,"");
+        return slotName;
+      }
+      else
+      {
+        return null;
+      }
     }
   }
+
+  public enum SaveMode
+  {
+    Encrypted,
+    UnEncrypted
+  }
 }
-
-
-public enum SaveMode
-{
-  Encrypted,
-  UnEncrypted
-}
-
-public record SaveDataSet<TDetail, TSummary>(
-  string SlotName, 
-  TDetail Detail,
-  TSummary? Summary
-  );
-

@@ -3,10 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Security.Cryptography;
 
 namespace Bismuth083.Utility
 {
-  internal class TextEncryptor
+  public class TextEncryptor
   {
     private readonly byte[] aesKey = null!;
     private const int KeySize = 256;
@@ -28,8 +29,7 @@ namespace Bismuth083.Utility
         aes.Mode = CipherMode.CBC;
         aes.Padding = PaddingMode.PKCS7;
 
-        var encryptor = aes.CreateDecryptor(aes.Key, aes.IV);
-
+        var encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
         using (var ms = new MemoryStream())
         using (var cs = new CryptoStream(ms, encryptor, CryptoStreamMode.Write))
         {
@@ -51,12 +51,11 @@ namespace Bismuth083.Utility
         aes.KeySize = KeySize;
         aes.Key = this.aesKey;
         aes.BlockSize = BlockSize;
-        Array.Copy(encryptedBytes, 0, aes.IV, 0, BlockSize / 8);
+        aes.IV = encryptedBytes[0..(BlockSize/8)];
         aes.Mode = CipherMode.CBC;
         aes.Padding = PaddingMode.PKCS7;
 
         var decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
-
         using (var ms = new MemoryStream())
         {
           using (var cs = new CryptoStream(ms, decryptor, CryptoStreamMode.Write))
