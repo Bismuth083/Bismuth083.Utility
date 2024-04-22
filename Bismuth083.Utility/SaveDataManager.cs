@@ -6,8 +6,9 @@ using System.Threading.Tasks;
 using System.Text.Json;
 using System.Text.Encodings.Web;
 using System.Text.RegularExpressions;
+using Bismuth083.Utility.Encrypt;
 
-namespace Bismuth083.Utility
+namespace Bismuth083.Utility.Save
 {
   public sealed class SaveDataManager
   {
