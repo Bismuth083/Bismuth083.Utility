@@ -1,5 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -7,15 +7,17 @@ using System.Security.Cryptography;
 
 namespace Bismuth083.Utility
 {
-  public class TextEncryptor
+  public sealed class TextEncryptor
   {
     private readonly byte[] aesKey = null!;
     private const int KeySize = 256;
     private const int BlockSize = 128;
+    private readonly byte[] iv = null!;
 
     public TextEncryptor(string passWord)
     {
       aesKey = PassWordToByteArray(passWord);
+      iv = RandomNumberGenerator.GetBytes(BlockSize / 8);
     }
 
     public string Encrypt(string unEncryptedText)
@@ -25,7 +27,7 @@ namespace Bismuth083.Utility
         aes.KeySize = KeySize;
         aes.Key = this.aesKey;
         aes.BlockSize = BlockSize;
-        aes.IV = RandomNumberGenerator.GetBytes(BlockSize / 8);
+        aes.IV = iv;
         aes.Mode = CipherMode.CBC;
         aes.Padding = PaddingMode.PKCS7;
 

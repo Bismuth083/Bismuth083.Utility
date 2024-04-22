@@ -5,12 +5,13 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Text.Json;
 using System.Text.Encodings.Web;
+using System.Text.RegularExpressions;
 
 namespace Bismuth083.Utility
 {
-  public class SaveDataManager
+  public sealed class SaveDataManager
   {
-    // TODO: データファイルパスの取り扱いを再考する。
+    // TODO: マルチスレッドでも例外が発生しないようにしたい
 
     public string DirectoryPath { get; init; }
     private readonly JsonSerializerOptions jsonOptions = new JsonSerializerOptions
@@ -19,6 +20,7 @@ namespace Bismuth083.Utility
       Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
     private readonly SaveMode saveMode;
+    private readonly bool canDeleteAllSlots;
     private readonly TextEncryptor? textEncryptor;
 
     /// <summary>
@@ -27,8 +29,9 @@ namespace Bismuth083.Utility
     /// <param name="directoryPath">ここで指定したディレクトリにSaveDataディレクトリを作成します。</param>
     /// <param name="password">暗号化する場合は必要です。1-32文字の半角文字で指定してください。パスワードを変更するとセーブデータが復号できなくなります。</param>
     /// <param name="saveMode">デフォルトでEncryptedが指定されます。Encryptedならパスワードによる暗号化が行われ、UnEncryptedならパスワードによる暗号化は行われません。</param>
+    /// <param name ="canDeleteAllSlots">デフォルトでfalseが指定されます。DeleteAllSlots()を使う場合のみtrueにしてください。</param>
     /// <exception cref="ArgumentException"></exception>
-    public SaveDataManager(string directoryLocation, SaveMode saveMode = SaveMode.Encrypted, string password = "")
+    public SaveDataManager(string directoryLocation, SaveMode saveMode = SaveMode.Encrypted, string password = "", bool canDeleteAllSlots = false)
     {
       // ディレクトリの検証、初期化
       const string SaveDataDirectoryName = "SaveData/";
@@ -46,7 +49,7 @@ namespace Bismuth083.Utility
           textEncryptor = new TextEncryptor(password);
           break;
         case SaveMode.UnEncrypted:
-          if (password != String.Empty)
+          if (password.Length != 0)
           {
             throw new ArgumentException("SaveModeがUnEncryptedになっているにもかかわらず、passwordが設定されています。passwordの指定を外すか、saveModeをEncryptedにしてください。", nameof(saveMode));
           }
@@ -54,12 +57,18 @@ namespace Bismuth083.Utility
           break;
           throw new ArgumentException("解釈できない列挙子を検出しました。", nameof(saveMode));
       }
-      // セーブモードを初期化
+
       this.saveMode = saveMode;
+      this.canDeleteAllSlots = canDeleteAllSlots;
     }
 
     public void Save<T>(T record, string slotName)
     {
+      if (!ValidateSlotName(slotName))
+      {
+        throw new ArgumentException("スロット名が不正です。区切り文字として/のみを利用し、最初と最後の文字に/を使用しないでください。", nameof(slotName));
+      }
+
       string saveDataText = JsonSerializer.Serialize(record, this.jsonOptions);
       switch (saveMode)
       {
@@ -85,6 +94,11 @@ namespace Bismuth083.Utility
 
     public (bool, T?) Road<T>(string slotName)
     {
+      if(!ValidateSlotName(slotName))
+      {
+        throw new ArgumentException("スロット名が不正です。区切り文字として/のみを利用し、最初と最後の文字に/を使用しないでください。", nameof(slotName));
+      }
+
       string filePath = SlotNameToPath(slotName);
 
       if (!File.Exists(filePath))
@@ -140,31 +154,47 @@ namespace Bismuth083.Utility
       return values;
     }
     
-    // bool
-    public void CopySlot(string SlotName, string NewSlotName)
+    public void CopySlot<T>(string slotName, string newSlotName)
     {
+      if (!ValidateSlotName(slotName))
+      {
+        throw new ArgumentException("スロット名が不正です。区切り文字として/のみを利用し、最初と最後の文字に/を使用しないでください。", nameof(slotName));
+      }
+      if (!ValidateSlotName(newSlotName))
+      {
+        throw new ArgumentException("スロット名が不正です。区切り文字として/のみを利用し、最初と最後の文字に/を使用しないでください。", nameof(newSlotName));
+      }
 
-
-
+      T? roadedData = this.Road<T>(slotName).Item2;
+      if (roadedData is not null)
+      {
+        this.Save(roadedData, newSlotName);
+      }
     }
 
-    // bool
-    public void CopySlot<T>(string SlotName, string NewSlotName, Func<T> withExpressiony)
+    public bool DeleteSlot(string slotName)
     {
+      if (!ValidateSlotName(slotName))
+      {
+        throw new ArgumentException("スロット名が不正です。区切り文字として/のみを利用し、最初と最後の文字に/を使用しないでください。", nameof(slotName));
+      }
+      string filePath = SlotNameToPath(slotName);
 
-
-
-
+      if (!File.Exists(filePath))
+      {
+        return false;
+      }
+      File.Delete(filePath);
+      return true;
     }
 
-    public void DeleteSlot(string SlotName)
+    public void DeleteAllSlots()
     {
-      // TODO: 指定したスロット名と一致するファイルを消去する。
-    }
-
-    public void DeleteAllSlots(string SlotName)
-    {
-      // Todo: ディレクトリ内のすべてのセーブデータを削除する。
+      if (!canDeleteAllSlots)
+      {
+        throw new InvalidOperationException("\"DeleteAllSlots()\"メソッドを使用する場合は、コンストラクターの引数\"canDeleteAllSlots\"をtrueにしてください。");
+      }
+      Directory.Delete(DirectoryPath, true);
     }
 
     private string NormalizeDirectoryPath(string path)
@@ -191,6 +221,15 @@ namespace Bismuth083.Utility
       {
         return null;
       }
+    }
+
+    private bool ValidateSlotName(string slotName)
+    {
+      // 先頭、最後尾に/を付けず、かつフォルダパスとして合法な書き方のみtrue。
+     return slotName.Length != 0 &&
+        !Regex.IsMatch(slotName, "[\\:*?\"<>|.,]+") &&
+        !Regex.IsMatch(slotName, "^/") && !Regex.IsMatch(slotName, "/$") &&
+        !Regex.IsMatch(slotName, "//"); 
     }
   }
 
