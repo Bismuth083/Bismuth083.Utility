@@ -7,12 +7,14 @@ using System.Text.Json;
 using System.Text.Encodings.Web;
 using System.Text.RegularExpressions;
 using Bismuth083.Utility.Encrypt;
+using Bismuth083.Utility.Save;
 
 namespace Bismuth083.Utility.Save
 {
   public sealed class SaveDataManager
   {
     // TODO: マルチスレッドでも例外が発生しないようにしたい
+    // TODO: List<SaveData>を型によらず持たせたい(Interfaceか継承で実装)
 
     public string DirectoryPath { get; init; }
     private readonly JsonSerializerOptions jsonOptions = new JsonSerializerOptions
@@ -63,7 +65,7 @@ namespace Bismuth083.Utility.Save
       this.canDeleteAllSlots = canDeleteAllSlots;
     }
 
-    public void Save<T>(T record, string slotName)
+    public void Save<T>(T record, string slotName, bool shouldCheckSlotNameisValid = true)
     {
       if (!ValidateSlotName(slotName))
       {
@@ -93,7 +95,7 @@ namespace Bismuth083.Utility.Save
       }
     }
 
-    public (bool, T?) Road<T>(string slotName)
+    public (bool, T?) Road<T>(string slotName, bool shouldCheckSlotNameisValid = true)
     {
       if(!ValidateSlotName(slotName))
       {
@@ -155,7 +157,7 @@ namespace Bismuth083.Utility.Save
       return values;
     }
     
-    public void CopySlot<T>(string slotName, string newSlotName)
+    public void CopySlot<T>(string slotName, string newSlotName, bool shouldCheckSlotNameisValid = true)
     {
       if (!ValidateSlotName(slotName))
       {
@@ -239,4 +241,67 @@ namespace Bismuth083.Utility.Save
     Encrypted,
     UnEncrypted
   }
+}
+
+
+
+public class SaveData<T>
+{
+  //複数のコンストラクタを書く。
+  public SaveData()
+  {
+
+  }
+
+  public bool HasSaveData
+  {
+    get 
+    { 
+      // SaveDataの検索
+      return _hasSaveData;
+    }
+  }
+
+  public bool IsSaved
+  {
+    get
+    {
+      return _isSaved;
+    }
+    internal set
+    {
+      _isSaved = value;
+    }
+  }
+
+  public string SlotName {
+    get
+    {
+      return _slotName;
+    }
+    init
+    {
+      _slotName = value;
+    }
+  }
+
+  public T Data
+  {
+    get
+    {
+      return _data;
+    }
+    set
+    {
+      _data = value;
+      _hasSaveData = true;
+      _isSaved = false;
+    }
+  }
+
+  private SaveDataManager _saveDataManager;
+  private T _data;
+  private string _slotName;
+  private bool _isSaved;
+  private bool _hasSaveData;
 }
