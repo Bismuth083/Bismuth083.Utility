@@ -31,7 +31,7 @@ namespace Bismuth083.Utility.Save
     private readonly SaveMode saveMode;
     private readonly bool canDeleteAllSlots;
     private readonly TextEncryptor? textEncryptor;
-    private BlockingCollection<ISaveData> saveData;
+    private BlockingCollection<ISaveData?> saveData;
 
     /// <summary>
     /// SaveDataManagerのコンストラクター。ディレクトリのパスとPassWordを指定してください。
@@ -70,17 +70,17 @@ namespace Bismuth083.Utility.Save
 
       this.saveMode = saveMode;
       this.canDeleteAllSlots = canDeleteAllSlots;
-      this.saveData = new BlockingCollection<ISaveData>();
+      this.saveData = new BlockingCollection<ISaveData?>();
     }
 
-    public void Save<T>(T record, string slotName)
+    public async Task<IOStatus> SaveAsync<T>(SaveData<T> saveData, CancellationToken cancellation = default)
     {
-      if (!ValidateSlotName(slotName))
+      if (!saveData.HasSaveData)
       {
-        throw new ArgumentException("スロット名が不正です。区切り文字として/のみを利用し、最初と最後の文字に/を使用しないでください。", nameof(slotName));
+        return IOStatus.DoNotHaveDataToSave;
       }
 
-      string saveDataText = JsonSerializer.Serialize(record, this.jsonOptions);
+      string saveDataText = JsonSerializer.Serialize(saveData.Data, this.jsonOptions);
       switch (saveMode)
       {
         case SaveMode.Encrypted:
@@ -89,26 +89,67 @@ namespace Bismuth083.Utility.Save
         case SaveMode.UnEncrypted:
           break;
       }
+      string filePath = saveData.FilePath;
+      string directoryToBeSaved = Path.GetDirectoryName(filePath)!;
 
-      string filePath = SlotNameToPath(slotName);
-      if (!File.Exists(Path.GetDirectoryName(filePath)))
+      // ファイルの存在の検証を非同期で行う(Directory.CreateDirectory??)
+
+      try
       {
-         Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        await File.WriteAllTextAsync(filePath, saveDataText, cancellation);
+      }
+      catch
+      {
+        return IOStatus.CouldNotAccess;
       }
 
-      using (var sw = new StreamWriter(filePath, false, Encoding.UTF8))
-      using (var ws = TextWriter.Synchronized(sw))
-      {
-        ws.WriteLine(saveDataText);
-      }
+      saveData.IsChanged = false;
+      return IOStatus.Success;
+
+      //using (var sw = new StreamWriter(filePath, false, Encoding.UTF8))
+      //using (var ws = TextWriter.Synchronized(sw))
+      //{
+      //  ws.WriteLine(saveDataText);
+      //}
+      //
+      // あかんかったらこれで同期処理をなんとかする。
     }
 
-    public (bool, T?) Road<T>(string slotName)
+    public async Task<IOStatus> SaveAsync<T>(T record, string slotName, CancellationToken cancellation = default)
     {
-      if(!ValidateSlotName(slotName))
+      if (!FileUtility.ValidateSlotName(slotName))
       {
         throw new ArgumentException("スロット名が不正です。区切り文字として/のみを利用し、最初と最後の文字に/を使用しないでください。", nameof(slotName));
       }
+
+      // Create
+
+      // return await saveDataを使う方を呼び出す
+
+    }
+    public async Task<(IOStatus status)> RoadAsync<T>(SaveData<T> saveData, CancellationToken cancellation = default)
+    {
+      string filePath = saveData.FilePath;
+      if (!File.Exists(filePath))
+      {
+        return IOStatus.FileNotFound;
+      }
+
+      // この後ダラダラといろんな処理が続く
+
+      // saveDataの書き換えはスレッドセーフに行うこと！！！！
+    }
+
+    public async Task<(IOStatus status, SaveData<T> saveData)> RoadAsync<T>(string slotName, CancellationToken cancellation = default)
+    {
+      if (!FileUtility.ValidateSlotName(slotName))
+      {
+        throw new ArgumentException("スロット名が不正です。区切り文字として/のみを利用し、最初と最後の文字に/を使用しないでください。", nameof(slotName));
+      }
+
+      // Create
+
+      // return saveDataを使う方を呼び出す
 
       string filePath = SlotNameToPath(slotName);
 
@@ -140,7 +181,7 @@ namespace Bismuth083.Utility.Save
 
     public IEnumerable<string> GetSlotNames(string constraint = "*")
     {
-      var fileNames = Directory.EnumerateFiles(DirectoryPath, constraint+".sav", SearchOption.AllDirectories)
+      var fileNames = Directory.EnumerateFiles(DirectoryPath, constraint + ".sav", SearchOption.AllDirectories)
         .Select(x => NormalizeDirectoryPath(x));
       var SlotNames = new HashSet<string>();
       foreach (var fileName in fileNames!)
@@ -164,7 +205,7 @@ namespace Bismuth083.Utility.Save
       }
       return values;
     }
-    
+
     public void CopySlot<T>(string slotName, string newSlotName)
     {
       if (!ValidateSlotName(slotName))
@@ -204,13 +245,14 @@ namespace Bismuth083.Utility.Save
     }
   }
 
-  public enum Result
+  public enum IOStatus
   {
     Success = 0,
     FileNotFound = 1,
     CouldNotAccess = 2,
     CouldNotDecrypt = 3,
-    InvalidJsonFormat = 4
+    InvalidJsonFormat = 4,
+    DoNotHaveDataToSave = 5,
   }
 
   public enum SaveMode
@@ -221,7 +263,7 @@ namespace Bismuth083.Utility.Save
 
   public class SaveData<T> : ISaveData
   {
-    internal SaveData(string slotName, T data, SaveDataManager saveDataManager)
+    internal SaveData(string slotName, T? data, SaveDataManager saveDataManager)
     {
       if (!FileUtility.ValidateSlotName(slotName))
       {
@@ -230,9 +272,17 @@ namespace Bismuth083.Utility.Save
       _manager = saveDataManager;
       SlotName = slotName;
       FilePath = FileUtility.SlotNameToPath(slotName, _manager.DirectoryPath);
-      _data = data;
-      HasSaveData = true;
-      IsChanged = false;
+      if(data is not null)
+      {
+        _data = data;
+        HasSaveData = true;
+        IsChanged = false;
+      }
+      else
+      {
+        HasSaveData = false;
+        IsChanged = false;
+      }
     }
 
     internal SaveData(string slotName, SaveDataManager saveDataManager)
@@ -244,7 +294,6 @@ namespace Bismuth083.Utility.Save
       _manager = saveDataManager;
       SlotName = slotName;
       FilePath = FileUtility.SlotNameToPath(slotName, _manager.DirectoryPath);
-      _data = default;
       HasSaveData = false;
       IsChanged = false;
     }
@@ -281,7 +330,7 @@ namespace Bismuth083.Utility.Save
 
   internal static class FileUtility
   {
-    public static bool ValidateSlotName(string slotName)
+    internal static bool ValidateSlotName(string slotName)
     {
       // 先頭、最後尾に/を付けず、かつフォルダパスとして合法な書き方のみtrue。
       return slotName.Length != 0 &&
@@ -290,7 +339,7 @@ namespace Bismuth083.Utility.Save
          !Regex.IsMatch(slotName, "//");
     }
 
-    public static string? FileNameToSlotName(string fileName, string directoryPath)
+    internal static string? FileNameToSlotName(string fileName, string directoryPath)
     {
       string? slotName = null;
       if (fileName.Contains(".sav"))
@@ -304,7 +353,7 @@ namespace Bismuth083.Utility.Save
       }
     }
 
-    public static string NormalizeDirectoryPath(string path)
+    internal static string NormalizeDirectoryPath(string path)
     {
       string newPath = path.Replace("\\", "/");
       newPath = newPath.TrimEnd('/');
@@ -312,7 +361,7 @@ namespace Bismuth083.Utility.Save
       return newPath;
     }
 
-    public static string SlotNameToPath(string slotName, string directoryPath)
+    internal static string SlotNameToPath(string slotName, string directoryPath)
     {
       return String.Concat(directoryPath, slotName, ".sav");
     }
