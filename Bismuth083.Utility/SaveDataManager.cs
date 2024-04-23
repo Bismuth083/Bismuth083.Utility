@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -25,6 +26,7 @@ namespace Bismuth083.Utility.Save
     private readonly SaveMode saveMode;
     private readonly bool canDeleteAllSlots;
     private readonly TextEncryptor? textEncryptor;
+    private readonly ImmutableList<ISaveData> savedata;
 
     /// <summary>
     /// SaveDataManagerのコンストラクター。ディレクトリのパスとPassWordを指定してください。
@@ -245,7 +247,7 @@ namespace Bismuth083.Utility.Save
 
 
 
-public class SaveData<T>
+public class SaveData<T> : ISaveData
 {
   //複数のコンストラクタを書く。
   public SaveData()
@@ -279,13 +281,13 @@ public class SaveData<T>
     {
       return _slotName;
     }
-    init
+    private set
     {
       _slotName = value;
     }
   }
 
-  public T Data
+  public T? Data
   {
     get
     {
@@ -299,9 +301,16 @@ public class SaveData<T>
     }
   }
 
-  private SaveDataManager _saveDataManager;
-  private T _data;
+  public string FilePath { get; init;}
+
+  private SaveDataManager _Manager;
+  private T? _data;
   private string _slotName;
   private bool _isSaved;
   private bool _hasSaveData;
+}
+
+internal interface ISaveData
+{
+  bool SaveIfUnsaved();
 }
