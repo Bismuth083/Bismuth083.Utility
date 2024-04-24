@@ -272,7 +272,7 @@ namespace Bismuth083.Utility.Save
       _manager = saveDataManager;
       SlotName = slotName;
       FilePath = FileUtility.SlotNameToPath(slotName, _manager.DirectoryPath);
-      if(data is not null)
+      if (data is not null)
       {
         _data = data;
         HasSaveData = true;
@@ -300,8 +300,40 @@ namespace Bismuth083.Utility.Save
 
     // SaveIfUnsaved()
 
-    public bool HasSaveData { get; private set; }
-    public bool IsChanged { get; internal set; }
+    public bool HasSaveData
+    {
+      get
+      {
+        lock (_lockH)
+        {
+          return _hasSaveData;
+        }
+      }
+      private set
+      {
+        lock (_lockH)
+        {
+          _hasSaveData = value;
+        }
+      }
+    }
+    public bool IsChanged
+    {
+      get
+      {
+        lock (_lockC)
+        {
+          return _isChanged;
+        }
+      }
+      internal set
+      {
+        lock (_lockC)
+        {
+          _isChanged = value;
+        }
+      }
+    }
     public string FilePath { get; }
     public string SlotName { get; }
 
@@ -309,18 +341,38 @@ namespace Bismuth083.Utility.Save
     {
       get
       {
-        IsChanged = true;
-        return _data;
+        lock (_lockT)
+        {
+          IsChanged = true;
+          return _data;
+        }
       }
       set
       {
-        _data = value;
-        HasSaveData = true;
-        IsChanged = true;
+        lock (_lockT)
+        {
+          if (value is not null)
+          {
+            _data = value;
+            HasSaveData = true;
+            IsChanged = true;
+          }
+          else
+          {
+            _data = value;
+            HasSaveData = false;
+            IsChanged = true;
+          }
+        }
       }
     }
+    private bool _hasSaveData;
+    private bool _isChanged;
     private readonly SaveDataManager _manager;
     private T? _data;
+    private object _lockT = new object();
+    private object _lockC = new object();
+    private object _lockH = new object();
   }
 
   public interface ISaveData
