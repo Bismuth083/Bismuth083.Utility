@@ -16,11 +16,10 @@ namespace Bismuth083.Utility.Save
 {
   public sealed class SaveDataManager
   {
-    // TODO: マルチスレッドでも例外が発生しないようにしたい。あるいはスレッドセーフにしたい。
-    // すべて非同期化させる。あとはcancellation tokenも手配。
-    // TODO: ほとんどすべての引数をSaveData型に対応。かつほとんどすべての戻り値に(status)を与える。
-    // TODO: CreateNewSlot(slotName),CreateNewSlot<T>(slotName, T)
-    // TODO: public GetAllData、saveDataリストに格納。
+    // TODO: マルチスレッドでも例外が発生しないようにしたい。
+    // TODO: テストケースの作成。
+    // TODO: Saveに失敗したときの差し戻しを行う、安全のため！！
+    // TODO: Documentation Commentを作成する。
 
     public string DirectoryPath { get; init; }
     private readonly JsonSerializerOptions jsonOptions = new JsonSerializerOptions
@@ -31,28 +30,27 @@ namespace Bismuth083.Utility.Save
     private readonly SaveMode saveMode;
     private readonly bool canDeleteAllSlots;
     private readonly TextEncryptor? textEncryptor;
-    private BlockingCollection<ISaveData?> saveData;
 
     /// <summary>
     /// SaveDataManagerのコンストラクター。ディレクトリのパスとPassWordを指定してください。
     /// </summary>
-    /// <param name="directoryPath">ここで指定したディレクトリにSaveDataディレクトリを作成します。</param>
+    /// <param name="directoryLocation">ここで指定したディレクトリ配下にSaveDataディレクトリを作成します。</param>
     /// <param name="password">暗号化する場合は必要です。1-32文字の半角文字で指定してください。パスワードを変更するとセーブデータが復号できなくなります。</param>
     /// <param name="saveMode">デフォルトでEncryptedが指定されます。Encryptedならパスワードによる暗号化が行われ、UnEncryptedならパスワードによる暗号化は行われません。</param>
     /// <param name ="canDeleteAllSlots">デフォルトでfalseが指定されます。DeleteAllSlots()を使う場合のみtrueにしてください。</param>
+    /// <param name="SaveDataDirectoryName">directoryLocationで指定したディレクトリ配下に作るディレクトリの名前です。規定では"SaveData"ディレクトリが作成されます。</param>
     /// <exception cref="ArgumentException"></exception>
-    public SaveDataManager(string directoryLocation, SaveMode saveMode = SaveMode.Encrypted, string password = "", bool canDeleteAllSlots = false)
+    public SaveDataManager(string directoryLocation, SaveMode saveMode = SaveMode.UnEncrypted, string password = "", string SaveDataDirectoryName = "SaveData/", bool canDeleteAllSlots = false)
     {
       // ディレクトリの検証、初期化
-      const string SaveDataDirectoryName = "SaveData/";
-      string directoryPath = FileUtility.NormalizeDirectoryPath(directoryLocation) + SaveDataDirectoryName;
+      string directoryPath = FileUtility.NormalizeDirectoryPath(directoryLocation + SaveDataDirectoryName);
       if (!Directory.Exists(directoryPath))
       {
         Directory.CreateDirectory(directoryPath);
       }
       this.DirectoryPath = directoryPath;
 
-      // パスワードの検証、初期化
+      // パスワードの設定
       switch (saveMode)
       {
         case SaveMode.Encrypted:
@@ -70,17 +68,19 @@ namespace Bismuth083.Utility.Save
 
       this.saveMode = saveMode;
       this.canDeleteAllSlots = canDeleteAllSlots;
-      this.saveData = new BlockingCollection<ISaveData?>();
     }
 
-    public async Task<IOStatus> SaveAsync<T>(SaveData<T> saveData, CancellationToken cancellation = default)
+    public IOStatus Save<T>(T record, string slotName, bool shouldCheckSlotName = true, bool shouldCheckSaveData = true)
     {
-      if (!saveData.HasSaveData)
+      // slotNameの検証
+      if (shouldCheckSlotName && !FileUtility.ValidateSlotName(slotName))
       {
-        return IOStatus.DoNotHaveDataToSave;
+        return IOStatus.InvalidSlotName;
       }
+      string filePath = FileUtility.SlotNameToPath(slotName, DirectoryPath);
 
-      string saveDataText = JsonSerializer.Serialize(saveData.Data, this.jsonOptions);
+      // シリアライズ、(暗号化が必要ならば暗号化)
+      string saveDataText = JsonSerializer.Serialize(record, this.jsonOptions);
       switch (saveMode)
       {
         case SaveMode.Encrypted:
@@ -89,21 +89,41 @@ namespace Bismuth083.Utility.Save
         case SaveMode.UnEncrypted:
           break;
       }
-      string filePath = saveData.FilePath;
+
+      // ローカルフォルダに保存、ディレクトリが存在しない場合作成
       string directoryToBeSaved = Path.GetDirectoryName(filePath)!;
-
-      // ファイルの存在の検証を非同期で行う(Directory.CreateDirectory??)
-
       try
       {
-        await File.WriteAllTextAsync(filePath, saveDataText, cancellation);
+        Directory.CreateDirectory(directoryToBeSaved);
       }
       catch
       {
         return IOStatus.CouldNotAccess;
       }
 
-      saveData.IsChanged = false;
+      try
+      {
+        File.WriteAllText(filePath, saveDataText);
+      }
+      catch
+      {
+        return IOStatus.CouldNotAccess;
+      }
+
+      // セーブデータが正しいか検証
+      if (shouldCheckSaveData)
+      {
+        var saved = Road<T>(slotName);
+        if(saved.status == 0 && JsonSerializer.Serialize(saved, this.jsonOptions) == saveDataText)
+        {
+          return IOStatus.Success;
+        }
+        else
+        {
+          return IOStatus.UnknownError;
+        }
+      }
+
       return IOStatus.Success;
 
       //using (var sw = new StreamWriter(filePath, false, Encoding.UTF8))
@@ -112,136 +132,168 @@ namespace Bismuth083.Utility.Save
       //  ws.WriteLine(saveDataText);
       //}
       //
-      // あかんかったらこれで同期処理をなんとかする。
+      // あかんかったらこれで非同期処理をなんとかする。
     }
 
-    public async Task<IOStatus> SaveAsync<T>(T record, string slotName, CancellationToken cancellation = default)
+    public (IOStatus status, T? saveData) Road<T>(string slotName, bool shouldCheckSlotName = true)
     {
-      if (!FileUtility.ValidateSlotName(slotName))
+      string readText;
+      T? data;
+      // slotNameの検証
+      if (shouldCheckSlotName && !FileUtility.ValidateSlotName(slotName))
       {
-        throw new ArgumentException("スロット名が不正です。区切り文字として/のみを利用し、最初と最後の文字に/を使用しないでください。", nameof(slotName));
+        return (IOStatus.InvalidSlotName, default);
       }
 
-      // Create
-
-      // return await saveDataを使う方を呼び出す
-
-    }
-    public async Task<(IOStatus status)> RoadAsync<T>(SaveData<T> saveData, CancellationToken cancellation = default)
-    {
-      string filePath = saveData.FilePath;
+      // ファイルの検索
+      string filePath = FileUtility.SlotNameToPath(slotName, DirectoryPath);
       if (!File.Exists(filePath))
       {
-        return IOStatus.FileNotFound;
+        return (IOStatus.FileNotFound, default);
       }
 
-      // この後ダラダラといろんな処理が続く
-
-      // saveDataの書き換えはスレッドセーフに行うこと！！！！
-    }
-
-    public async Task<(IOStatus status, SaveData<T> saveData)> RoadAsync<T>(string slotName, CancellationToken cancellation = default)
-    {
-      if (!FileUtility.ValidateSlotName(slotName))
+      // ファイルの読み込み
+      try
       {
-        throw new ArgumentException("スロット名が不正です。区切り文字として/のみを利用し、最初と最後の文字に/を使用しないでください。", nameof(slotName));
+       readText = File.ReadAllText(filePath);  
       }
-
-      // Create
-
-      // return saveDataを使う方を呼び出す
-
-      string filePath = SlotNameToPath(slotName);
-
-      if (!File.Exists(filePath))
+      catch
       {
-        return (false, default(T));
+        return (IOStatus.CouldNotAccess, default);
       }
 
-      string saveDataText;
-
-      using (var sr = new StreamReader(filePath, Encoding.UTF8))
-      using (var tr = TextReader.Synchronized(sr))
-      {
-        saveDataText = tr.ReadToEnd();
-      }
-
+      // 必要なら復号化
       switch (saveMode)
       {
         case SaveMode.Encrypted:
-          saveDataText = textEncryptor!.Decrypt(saveDataText);
+          try
+          {
+            readText = textEncryptor!.Decrypt(readText);
+          }
+          catch
+          {
+            return (IOStatus.CouldNotDecrypt, default);
+          }
           break;
         case SaveMode.UnEncrypted:
           break;
       }
-      T? t = JsonSerializer.Deserialize<T>(saveDataText, jsonOptions);
 
-      return (true, t);
+      // JSonのデシリアライズ
+      try
+      {
+       data = JsonSerializer.Deserialize<T?>(readText, jsonOptions);
+      }
+      catch
+      {
+        return (IOStatus.InvalidJsonFormat, default);
+      }
+      return (IOStatus.Success, data);
     }
 
-    public IEnumerable<string> GetSlotNames(string constraint = "*")
+    public IEnumerable<string> GetSlotNames(string constraint = "*.sav")
     {
-      var fileNames = Directory.EnumerateFiles(DirectoryPath, constraint + ".sav", SearchOption.AllDirectories)
-        .Select(x => NormalizeDirectoryPath(x));
-      var SlotNames = new HashSet<string>();
-      foreach (var fileName in fileNames!)
+      var slotNames = new ConcurrentBag<string>();
+
+      var fileNames = Directory.EnumerateFiles(DirectoryPath, constraint, SearchOption.AllDirectories)
+        .Select(x => FileUtility.NormalizeDirectoryPath(x));
+
+      Parallel.ForEach(fileNames, fileName =>
       {
         if (fileName is not null)
         {
-          SlotNames.Add(FileNameToSlotName(fileName!)!);
+          slotNames.Add(FileUtility.FileNameToSlotName(fileName!, DirectoryPath)!);
         }
       }
-      return SlotNames;
+    );
+      return slotNames;
     }
 
-    public IEnumerable<(string, T)> GetSlots<T>(string constraint = "*")
+    public IEnumerable<(string slotName,T data)> GetSlots<T>(string constraint = "*.sav")
     {
       var slotNames = GetSlotNames(constraint);
-      var values = new HashSet<(string, T)>();
-      foreach (var slotName in slotNames)
+      var slots = new ConcurrentBag<(string, T)>();
+
+      Parallel.ForEach(slotNames, slotname =>
       {
-        var data = this.Road<T>(slotName);
-        values.Add((slotName, data.Item2!));
-      }
-      return values;
+        var temp = Road<T>(slotname);
+        if(temp.status == 0)
+        {
+          slots.Add((slotname, temp.saveData!));
+        }
+      });
+      return slots;
     }
 
-    public void CopySlot<T>(string slotName, string newSlotName)
+    public IOStatus CopySlot<T>(string slotName, string newSlotName, bool shouldCheckSlotName = true)
     {
-      if (!ValidateSlotName(slotName))
+      // slotNameの検証
+      if (shouldCheckSlotName && !FileUtility.ValidateSlotName(slotName)) 
       {
-        throw new ArgumentException("スロット名が不正です。区切り文字として/のみを利用し、最初と最後の文字に/を使用しないでください。", nameof(slotName));
+        return IOStatus.InvalidSlotName;
       }
-      if (!ValidateSlotName(newSlotName))
+      if (shouldCheckSlotName && !FileUtility.ValidateSlotName(newSlotName))
       {
-        throw new ArgumentException("スロット名が不正です。区切り文字として/のみを利用し、最初と最後の文字に/を使用しないでください。", nameof(newSlotName));
+        return IOStatus.InvalidSlotName;
       }
 
-      T? roadedData = this.Road<T>(slotName).Item2;
-      if (roadedData is not null)
+      // RoadおよびSave
+      var temp = Road<T>(slotName);
+      
+      if(temp.status == 0)
       {
-        this.Save(roadedData, newSlotName);
+        IOStatus status = Save(temp.saveData, newSlotName);
+        return status;
+      }
+      else
+      {
+        return temp.status;
       }
     }
 
-    public bool DeleteSlot(ISaveData savedata)
+    public IOStatus DeleteSlot(string slotName, bool shouldCheckSlotName=true)
     {
-
-      if (!File.Exists(filePath))
+      // ファイルの名の検証
+      if (shouldCheckSlotName && !FileUtility.ValidateSlotName(slotName))
       {
-        return false;
+        return IOStatus.InvalidSlotName;
       }
-      File.Delete(filePath);
-      return true;
+
+      // ファイルの存在確認
+      string filePath = FileUtility.SlotNameToPath(slotName, DirectoryPath);
+
+      if (!File.Exists(filePath)) {
+        return IOStatus.FileNotFound;
+      }
+
+      // 削除
+      try
+      {
+        File.Delete(filePath);
+      }
+      catch
+      {
+        return IOStatus.CouldNotAccess;
+      }
+      return IOStatus.Success;
     }
 
-    public void DeleteAllSlots()
+    public IOStatus DeleteAllSlots()
     {
       if (!canDeleteAllSlots)
       {
         throw new InvalidOperationException("\"DeleteAllSlots()\"メソッドを使用する場合は、コンストラクターの引数\"canDeleteAllSlots\"をtrueにしてください。");
       }
-      Directory.Delete(DirectoryPath, true);
+      try
+      {
+        Directory.Delete(DirectoryPath, true);
+        Directory.CreateDirectory(DirectoryPath);
+      }
+      catch
+      {
+        return IOStatus.CouldNotAccess;
+      }
+      return IOStatus.Success;
     }
   }
 
@@ -252,132 +304,14 @@ namespace Bismuth083.Utility.Save
     CouldNotAccess = 2,
     CouldNotDecrypt = 3,
     InvalidJsonFormat = 4,
-    DoNotHaveDataToSave = 5,
+    InvalidSlotName = 5,
+    UnknownError = 6
   }
 
   public enum SaveMode
   {
     Encrypted,
     UnEncrypted
-  }
-
-  public class SaveData<T> : ISaveData
-  {
-    internal SaveData(string slotName, T? data, SaveDataManager saveDataManager)
-    {
-      if (!FileUtility.ValidateSlotName(slotName))
-      {
-        throw new ArgumentException("スロット名が不正です。区切り文字として/のみを利用し、最初と最後の文字に/を使用しないでください。", nameof(slotName));
-      }
-      _manager = saveDataManager;
-      SlotName = slotName;
-      FilePath = FileUtility.SlotNameToPath(slotName, _manager.DirectoryPath);
-      if (data is not null)
-      {
-        _data = data;
-        HasSaveData = true;
-        IsChanged = false;
-      }
-      else
-      {
-        HasSaveData = false;
-        IsChanged = false;
-      }
-    }
-
-    internal SaveData(string slotName, SaveDataManager saveDataManager)
-    {
-      if (!FileUtility.ValidateSlotName(slotName))
-      {
-        throw new ArgumentException("スロット名が不正です。区切り文字として/のみを利用し、最初と最後の文字に/を使用しないでください。", nameof(slotName));
-      }
-      _manager = saveDataManager;
-      SlotName = slotName;
-      FilePath = FileUtility.SlotNameToPath(slotName, _manager.DirectoryPath);
-      HasSaveData = false;
-      IsChanged = false;
-    }
-
-    // SaveIfUnsaved()
-
-    public bool HasSaveData
-    {
-      get
-      {
-        lock (_lockH)
-        {
-          return _hasSaveData;
-        }
-      }
-      private set
-      {
-        lock (_lockH)
-        {
-          _hasSaveData = value;
-        }
-      }
-    }
-    public bool IsChanged
-    {
-      get
-      {
-        lock (_lockC)
-        {
-          return _isChanged;
-        }
-      }
-      internal set
-      {
-        lock (_lockC)
-        {
-          _isChanged = value;
-        }
-      }
-    }
-    public string FilePath { get; }
-    public string SlotName { get; }
-
-    public T? Data
-    {
-      get
-      {
-        lock (_lockT)
-        {
-          IsChanged = true;
-          return _data;
-        }
-      }
-      set
-      {
-        lock (_lockT)
-        {
-          if (value is not null)
-          {
-            _data = value;
-            HasSaveData = true;
-            IsChanged = true;
-          }
-          else
-          {
-            _data = value;
-            HasSaveData = false;
-            IsChanged = true;
-          }
-        }
-      }
-    }
-    private bool _hasSaveData;
-    private bool _isChanged;
-    private readonly SaveDataManager _manager;
-    private T? _data;
-    private object _lockT = new object();
-    private object _lockC = new object();
-    private object _lockH = new object();
-  }
-
-  public interface ISaveData
-  {
-    bool SaveIfUnsaved();
   }
 
   internal static class FileUtility
@@ -393,7 +327,7 @@ namespace Bismuth083.Utility.Save
 
     internal static string? FileNameToSlotName(string fileName, string directoryPath)
     {
-      string? slotName = null;
+      string? slotName;
       if (fileName.Contains(".sav"))
       {
         slotName = fileName.Substring(0, fileName.IndexOf(".sav")).Replace(directoryPath, "");
@@ -405,7 +339,7 @@ namespace Bismuth083.Utility.Save
       }
     }
 
-    internal static string NormalizeDirectoryPath(string path)
+        internal static string NormalizeDirectoryPath(string path)
     {
       string newPath = path.Replace("\\", "/");
       newPath = newPath.TrimEnd('/');
