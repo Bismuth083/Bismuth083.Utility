@@ -1,5 +1,5 @@
 ﻿using System;
-using System.Collections.Immutable;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -73,7 +73,7 @@ namespace Bismuth083.Utility.Encrypt
 
     private static byte[] PassWordToByteArray(string password)
     {
-      ImmutableList<byte> temp = Encoding.UTF8.GetBytes(password).ToImmutableList<byte>();
+      List<byte> temp = Encoding.UTF8.GetBytes(password).ToList<byte>();
       if (temp.Count > 32 || temp.Count == 0)
       {
         throw new ArgumentException("Passwordは半角かつ、長さが1-32文字になるように指定してください。", nameof(password));
