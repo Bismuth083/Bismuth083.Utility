@@ -1,16 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Collections.Concurrent;
+using System.IO;
 using System.Linq;
-using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Text.Json;
 using System.Text.Encodings.Web;
 using System.Text.RegularExpressions;
 using Bismuth083.Utility.Encrypt;
-using Bismuth083.Utility.Save;
 
 namespace Bismuth083.Utility.Save
 {
@@ -22,7 +19,7 @@ namespace Bismuth083.Utility.Save
     // TODO: Documentation Commentを作成する。
 
     public string DirectoryPath { get; init; }
-    private readonly JsonSerializerOptions jsonOptions = new JsonSerializerOptions
+    private readonly JsonSerializerOptions jsonOptions = new()
     {
       PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
       Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
@@ -216,10 +213,10 @@ namespace Bismuth083.Utility.Save
 
       Parallel.ForEach(slotNames, slotname =>
       {
-        var temp = Road<T>(slotname);
-        if(temp.status == 0)
+        (var status,var saveData) = Road<T>(slotname);
+        if(status == 0)
         {
-          slots.Add((slotname, temp.saveData!));
+          slots.Add((slotname, saveData!));
         }
       });
       return slots;
@@ -330,7 +327,7 @@ namespace Bismuth083.Utility.Save
       string? slotName;
       if (fileName.Contains(".sav"))
       {
-        slotName = fileName.Substring(0, fileName.IndexOf(".sav")).Replace(directoryPath, "");
+        slotName = fileName.Substring(fileName.IndexOf(".sav")).Replace(directoryPath, "");
         return slotName;
       }
       else
