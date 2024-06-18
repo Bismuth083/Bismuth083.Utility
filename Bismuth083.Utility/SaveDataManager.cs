@@ -31,16 +31,16 @@ namespace Bismuth083.Utility.Save
     /// <summary>
     /// SaveDataManagerのコンストラクター。ディレクトリのパスとPassWordを指定してください。
     /// </summary>
-    /// <param name="directoryLocation">ここで指定したディレクトリ配下にSaveDataディレクトリを作成します。</param>
+    /// <param name="directoryLocation">ここで指定したディレクトリ下にセーブデータやサブディレクトリが作成されます。</param>
     /// <param name="password">暗号化する場合は必要です。1-32文字の半角文字で指定してください。パスワードを変更するとセーブデータが復号できなくなります。</param>
     /// <param name="saveMode">デフォルトでEncryptedが指定されます。Encryptedならパスワードによる暗号化が行われ、UnEncryptedならパスワードによる暗号化は行われません。</param>
     /// <param name ="canDeleteAllSlots">デフォルトでfalseが指定されます。DeleteAllSlots()を使う場合のみtrueにしてください。</param>
     /// <param name="SaveDataDirectoryName">directoryLocationで指定したディレクトリ配下に作るディレクトリの名前です。規定では"SaveData"ディレクトリが作成されます。</param>
     /// <exception cref="ArgumentException"></exception>
-    public SaveDataManager(string directoryLocation, SaveMode saveMode = SaveMode.UnEncrypted, string password = "", string SaveDataDirectoryName = "SaveData/", bool canDeleteAllSlots = false)
+    public SaveDataManager(string directoryLocation, SaveMode saveMode = SaveMode.UnEncrypted, string password = "", bool canDeleteAllSlots = false)
     {
       // ディレクトリの検証、初期化
-      string directoryPath = FileUtility.NormalizeDirectoryPath(directoryLocation + SaveDataDirectoryName);
+      string directoryPath = FileUtility.NormalizeDirectoryPath(directoryLocation);
       if (!Directory.Exists(directoryPath))
       {
         Directory.CreateDirectory(directoryPath);
