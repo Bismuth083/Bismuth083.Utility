@@ -31,21 +31,28 @@ namespace Bismuth083.Utility.Save
     /// <summary>
     /// SaveDataManagerのコンストラクター。ディレクトリのパスとPassWordを指定してください。
     /// </summary>
-    /// <param name="directoryLocation">ここで指定したディレクトリ下にセーブデータやサブディレクトリが作成されます。</param>
-    /// <param name="password">暗号化する場合は必要です。1-32文字の半角文字で指定してください。パスワードを変更するとセーブデータが復号できなくなります。</param>
+    /// <param name="directoryPath">ここで指定したディレクトリ下にセーブデータやサブディレクトリが作成されます。</param>
+    /// <param name="password">暗号化する場合は必要です。十分な強度のパスワードを指定してください。パスワードを変更するとセーブデータが復号できなくなります。</param>
     /// <param name="saveMode">デフォルトでEncryptedが指定されます。Encryptedならパスワードによる暗号化が行われ、UnEncryptedならパスワードによる暗号化は行われません。</param>
     /// <param name ="canDeleteAllSlots">デフォルトでfalseが指定されます。DeleteAllSlots()を使う場合のみtrueにしてください。</param>
     /// <param name="SaveDataDirectoryName">directoryLocationで指定したディレクトリ配下に作るディレクトリの名前です。規定では"SaveData"ディレクトリが作成されます。</param>
     /// <exception cref="ArgumentException"></exception>
-    public SaveDataManager(string directoryLocation, SaveMode saveMode = SaveMode.UnEncrypted, string password = "", bool canDeleteAllSlots = false)
+    public SaveDataManager(string directoryPath, SaveMode saveMode = SaveMode.UnEncrypted, string password = "", bool canDeleteAllSlots = false)
     {
       // ディレクトリの検証、初期化
-      string directoryPath = FileUtility.NormalizeDirectoryPath(directoryLocation);
-      if (!Directory.Exists(directoryPath))
+      try
       {
-        Directory.CreateDirectory(directoryPath);
+        directoryPath = FileUtility.NormalizeDirectoryPath(directoryPath);
+        if (!Directory.Exists(directoryPath))
+        {
+          Directory.CreateDirectory(directoryPath);
+        }
+        this.DirectoryPath = directoryPath;
       }
-      this.DirectoryPath = directoryPath;
+      catch
+      {
+        throw new IOException("無効なフォルダパスです。");
+      }
 
       // パスワードの設定
       switch (saveMode)
@@ -67,6 +74,15 @@ namespace Bismuth083.Utility.Save
       this.canDeleteAllSlots = canDeleteAllSlots;
     }
 
+    /// <summary>
+    /// 指定されたスロット名で、recodeに指定したオブジェクトを保存します。
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="record">保存するオブジェクトです。JSON形式にシリアライズされるため、複雑なオブジェクトでは一部データが保存されない可能性があります。</param>
+    /// <param name="slotName">セーブするファイルのスロットネーム。半角英数字と、区切り文字として/が使用できます。</param>
+    /// <param name="shouldCheckSlotName">slotNameが正しいかをチェックします。規定ではtrueです。</param>
+    /// <param name="shouldCheckSaveData">セーブしたファイルが読み込めるか検証します。規定ではtrueです。</param>
+    /// <returns></returns>
     public IOStatus Save<T>(T record, string slotName, bool shouldCheckSlotName = true, bool shouldCheckSaveData = true)
     {
       // slotNameの検証
@@ -132,6 +148,13 @@ namespace Bismuth083.Utility.Save
       // あかんかったらこれで非同期処理をなんとかする。
     }
 
+    /// <summary>
+    /// 指定したスロット名のセーブデータを読み込みます。
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="slotName">ロードするファイルのスロットネーム。半角英数字と、区切り文字として/が使用できます。</param>
+    /// <param name="shouldCheckSlotName">slotNameが正しいかをチェックします。規定ではtrueです。</param>
+    /// <returns></returns>
     public (IOStatus status, T? saveData) Road<T>(string slotName, bool shouldCheckSlotName = true)
     {
       string readText;
@@ -188,6 +211,11 @@ namespace Bismuth083.Utility.Save
       return (IOStatus.Success, data);
     }
 
+    /// <summary>
+    /// directoryPathで指定されたフォルダ中の全セーブデータのスロット名を返します。
+    /// </summary>
+    /// <param name="constraint">読み込むセーブデータの条件です。規定では.savファイルのみを読み込みます。条件にワイルドカードが使用できます。</param>
+    /// <returns></returns>
     public IEnumerable<string> GetSlotNames(string constraint = "*.sav")
     {
       var slotNames = new ConcurrentBag<string>();
@@ -206,6 +234,12 @@ namespace Bismuth083.Utility.Save
       return slotNames;
     }
 
+    /// <summary>
+    /// directoryPathで指定されたフォルダ中の全セーブデータを返します。
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="constraint">読み込むセーブデータの条件です。規定では.savファイルのみを読み込みます。条件にワイルドカードが使用できます。</param>
+    /// <returns></returns>
     public IEnumerable<(string slotName,T data)> GetSlots<T>(string constraint = "*.sav")
     {
       var slotNames = GetSlotNames(constraint);
@@ -222,7 +256,15 @@ namespace Bismuth083.Utility.Save
       return slots;
     }
 
-    public IOStatus CopySlot<T>(string slotName, string newSlotName, bool shouldCheckSlotName = true)
+    /// <summary>
+    /// ファイルをコピーします。
+    /// </summary>
+    /// <param name="slotName">コピー元ファイルのスロットネーム。半角英数字と、区切り文字として/が使用できます。</param>
+    /// <param name="newSlotName">コピー先ファイルのスロットネーム。半角英数字と、区切り文字として/が使用できます。</param>
+    /// <param name="allowOverWrite">trueならコピー先ファイルが既に存在するとき上書きします。falseなら何も行いません。</param>
+    /// <param name="shouldCheckSlotName">slotNameが正しいかをチェックします。規定ではTrueです。</param>
+    /// <returns></returns>
+    public IOStatus CopySlot(string slotName, string newSlotName,bool allowOverWrite = false , bool shouldCheckSlotName = true)
     {
       // slotNameの検証
       if (shouldCheckSlotName && !FileUtility.ValidateSlotName(slotName)) 
@@ -234,20 +276,29 @@ namespace Bismuth083.Utility.Save
         return IOStatus.InvalidSlotName;
       }
 
-      // RoadおよびSave
-      var temp = Road<T>(slotName);
-      
-      if(temp.status == 0)
-      {
-        IOStatus status = Save(temp.saveData, newSlotName);
-        return status;
+      string filePath = FileUtility.SlotNameToPath(slotName, DirectoryPath);
+      string newFilePath = FileUtility.SlotNameToPath(newSlotName, DirectoryPath);
+
+      // ファイルの検証およびコピー
+      if (!File.Exists(filePath)) return IOStatus.FileNotFound;
+      else if (File.Exists(newFilePath) && !allowOverWrite) return IOStatus.AlreadyExists;
+      try {
+        File.Copy(filePath, newFilePath); 
       }
-      else
+      catch
       {
-        return temp.status;
+        return IOStatus.CouldNotAccess;
       }
+
+      return IOStatus.Success;
     }
 
+    /// <summary>
+    /// slotNameで指定されたファイルを、存在すれば削除します。
+    /// </summary>
+    /// <param name="slotName">削除するファイルのスロットネーム。半角英数字と、区切り文字として/が使用できます。</param>
+    /// <param name="shouldCheckSlotName">slotNameが正しいかをチェックします。規定ではTrueです。</param>
+    /// <returns></returns>
     public IOStatus DeleteSlot(string slotName, bool shouldCheckSlotName=true)
     {
       // ファイルの名の検証
@@ -275,6 +326,12 @@ namespace Bismuth083.Utility.Save
       return IOStatus.Success;
     }
 
+    /// <summary>
+    /// directoryPathで指定されたフォルダを削除します。
+    /// 安全のため、コンストラクターでcanDeleteAllSlotsが有効である時にのみ利用できます。
+    /// </summary>
+    /// <returns></returns>
+    /// <exception cref="InvalidOperationException">canDeleteAllSlotsがfalseになっています。利用する場合はtrueにしてください。</exception>
     public IOStatus DeleteAllSlots()
     {
       if (!canDeleteAllSlots)
@@ -284,7 +341,6 @@ namespace Bismuth083.Utility.Save
       try
       {
         Directory.Delete(DirectoryPath, true);
-        Directory.CreateDirectory(DirectoryPath);
       }
       catch
       {
@@ -302,7 +358,8 @@ namespace Bismuth083.Utility.Save
     CouldNotDecrypt = 3,
     InvalidJsonFormat = 4,
     InvalidSlotName = 5,
-    UnknownError = 6
+    UnknownError = 6,
+    AlreadyExists = 7,
   }
 
   public enum SaveMode
@@ -327,7 +384,7 @@ namespace Bismuth083.Utility.Save
       string? slotName;
       if (fileName.Contains(".sav"))
       {
-        slotName = fileName.Substring(fileName.IndexOf(".sav")).Replace(directoryPath, "");
+        slotName = fileName.Substring(0, fileName.IndexOf(".sav")).Replace(directoryPath, "");
         return slotName;
       }
       else
