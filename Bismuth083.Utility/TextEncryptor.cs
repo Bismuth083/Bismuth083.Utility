@@ -72,17 +72,9 @@ namespace Bismuth083.Utility.Encrypt
     }
 
     private static byte[] PassWordToByteArray(string password)
-    {
-      List<byte> temp = Encoding.UTF8.GetBytes(password).ToList<byte>();
-      if (temp.Count > 32 || temp.Count == 0)
-      {
-        throw new ArgumentException("Passwordは半角かつ、長さが1-32文字になるように指定してください。", nameof(password));
-      }
-      while (temp.Count < 32)
-      {
-        temp.Add(0);
-      }
-      return temp.ToArray();
+    {　
+      var encoding = Encoding.GetEncoding("UTF-8");
+      return SHA256.HashData(encoding.GetBytes(password));
     }
   }
 }
