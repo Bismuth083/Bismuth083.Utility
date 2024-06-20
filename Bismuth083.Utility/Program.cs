@@ -55,7 +55,7 @@ internal class Program
     }
 
 
-    saveDataManager.CopySlot<DataSet>("User/01", "User/03");
+    saveDataManager.CopySlot("User/01", "User/03");
 
     // スレッドセーフかの検証
     

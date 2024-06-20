@@ -11,12 +11,19 @@ using Bismuth083.Utility.Encrypt;
 
 namespace Bismuth083.Utility.Save
 {
+  /// <summary>
+  /// セーブデータの管理を行うクラスです。
+  /// </summary>
+  /// <remarks>
+  /// このクラスにおけるスロット名とは、DirectoryPath以下のパスから拡張子を除いたものです。
+  /// 例: <c>C:/SomeApplication/Save/Player1/config.sav</c>で<c>>C:/SomeApplication/Save/</c>をdirectoryPathに指定した場合 -> <c>Player1/config</c>
+  /// </remarks>
   public sealed class SaveDataManager
   {
-    // TODO: マルチスレッドでも例外が発生しないようにしたい。
     // TODO: テストケースの作成。
-    // TODO: Saveに失敗したときの差し戻しを行う、安全のため！！
-    // TODO: Documentation Commentを作成する。
+    // TODO: Saveは「Tempファイル->目的のファイルにRename」で行う。
+    // TODO: SaveからSerialize、RoadからDeserializeを分離する。
+    // TODO: クラスのExample、メソッドのTparamの説明。その他説明手直し。
 
     public string DirectoryPath { get; init; }
     private readonly JsonSerializerOptions jsonOptions = new()
@@ -49,9 +56,9 @@ namespace Bismuth083.Utility.Save
         }
         this.DirectoryPath = directoryPath;
       }
-      catch
+      catch(Exception e)
       {
-        throw new IOException("無効なフォルダパスです。");
+        throw new IOException("無効なフォルダパスです。", e);
       }
 
       // パスワードの設定
