@@ -22,7 +22,7 @@ namespace Bismuth083.Utility.Save
   {
     // TODO: テストケースの作成。
     // TODO: Saveは「Tempファイル->目的のファイルにRename」で行う。
-    // TODO: SaveからSerialize、RoadからDeserializeを分離する。
+    // TODO: SaveからSerialize、LoadからDeserializeを分離する。
     // TODO: そもそもクラス自体をシリアライザとマネージャに分離したい。
     // TODO: クラスのExample、メソッドのTparamの説明。その他説明手直し。
 
@@ -134,7 +134,7 @@ namespace Bismuth083.Utility.Save
       // セーブデータが正しいか検証
       if (shouldCheckSaveData)
       {
-        var saved = Road<T>(slotName);
+        var saved = Load<T>(slotName);
         if(saved.status == 0 && JsonSerializer.Serialize(saved, this.jsonOptions) == saveDataText)
         {
           return IOStatus.Success;
@@ -168,7 +168,7 @@ namespace Bismuth083.Utility.Save
     /// <param name="slotName">ロードするファイルのスロットネーム。半角英数字と、区切り文字として/が使用できます。</param>
     /// <param name="shouldCheckSlotName">slotNameが正しいかをチェックします。規定ではtrueです。</param>
     /// <returns></returns>
-    public (IOStatus status, T? saveData) Road<T>(string slotName, bool shouldCheckSlotName = true)
+    public (IOStatus status, T? saveData) Load<T>(string slotName, bool shouldCheckSlotName = true)
     {
       string readText;
       T? data;
@@ -260,7 +260,7 @@ namespace Bismuth083.Utility.Save
 
       Parallel.ForEach(slotNames, slotname =>
       {
-        (var status,var saveData) = Road<T>(slotname);
+        (var status,var saveData) = Load<T>(slotname);
         if(status == 0)
         {
           slots.Add((slotname, saveData!));

@@ -32,7 +32,7 @@ internal class Program
     saveDataManager.Save<DataSet>(dataSet, "User/01");
 
     // ロード
-    DataSet dataset = saveDataManager.Road<DataSet>("01").Item2!;
+    DataSet dataset = saveDataManager.Load<DataSet>("01").Item2!;
 
     // ロードデータの確認
     Console.WriteLine(dataset);
@@ -60,16 +60,16 @@ internal class Program
     // スレッドセーフかの検証
     
     Task t1 = Task.Run(() => saveDataManager.Save(dataSet, "User/01"));
-    Task t2 = Task.Run(() => saveDataManager.Road<DataSet>("User/01"));
+    Task t2 = Task.Run(() => saveDataManager.Load<DataSet>("User/01"));
     Task t3 = Task.Run(() => saveDataManager.Save(dataSet, "User/01"));
-    Task t4 = Task.Run(() => saveDataManager.Road<DataSet>("User/01"));
+    Task t4 = Task.Run(() => saveDataManager.Load<DataSet>("User/01"));
     Task t5 = Task.Run(() => saveDataManager.Save(dataSet, "User/01"));
-    Task t6 = Task.Run(() => saveDataManager.Road<DataSet>("User/01"));
+    Task t6 = Task.Run(() => saveDataManager.Load<DataSet>("User/01"));
     Task t7 = Task.Run(() => saveDataManager.Save(dataSet, "User/01"));
-    Task t8 = Task.Run(() => saveDataManager.Road<DataSet>("User/01"));
+    Task t8 = Task.Run(() => saveDataManager.Load<DataSet>("User/01"));
 
     await Task.WhenAll(t1, t2, t3, t4, t5, t6, t7, t8);
-    Console.WriteLine(saveDataManager.Road<DataSet>("User/01"));
+    Console.WriteLine(saveDataManager.Load<DataSet>("User/01"));
 
     // 削除の検証
     Console.WriteLine(saveDataManager.DeleteSlot("User/01").ToString());
