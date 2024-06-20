@@ -23,15 +23,16 @@ namespace Bismuth083.Utility.Save
     // TODO: テストケースの作成。
     // TODO: Saveは「Tempファイル->目的のファイルにRename」で行う。
     // TODO: SaveからSerialize、RoadからDeserializeを分離する。
+    // TODO: そもそもクラス自体をシリアライザとマネージャに分離したい。
     // TODO: クラスのExample、メソッドのTparamの説明。その他説明手直し。
 
-    public string DirectoryPath { get; init; }
+		public string DirectoryPath { get; init; }
     private readonly JsonSerializerOptions jsonOptions = new()
     {
       PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
       Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
-    private readonly SaveMode saveMode;
+		private readonly SaveMode saveMode;
     private readonly bool canDeleteAllSlots;
     private readonly TextEncryptor? textEncryptor;
 
@@ -43,7 +44,7 @@ namespace Bismuth083.Utility.Save
     /// <param name="saveMode">デフォルトでEncryptedが指定されます。Encryptedならパスワードによる暗号化が行われ、UnEncryptedならパスワードによる暗号化は行われません。</param>
     /// <param name ="canDeleteAllSlots">デフォルトでfalseが指定されます。DeleteAllSlots()を使う場合のみtrueにしてください。</param>
     /// <param name="SaveDataDirectoryName">directoryLocationで指定したディレクトリ配下に作るディレクトリの名前です。規定では"SaveData"ディレクトリが作成されます。</param>
-    /// <exception cref="ArgumentException"></exception>
+    /// <exception cref="ArgumentException">Passwordの設定が誤っているか、無効なディレクトリパスです。</exception>
     public SaveDataManager(string directoryPath, SaveMode saveMode = SaveMode.UnEncrypted, string password = "", bool canDeleteAllSlots = false)
     {
       // ディレクトリの検証、初期化
@@ -58,7 +59,7 @@ namespace Bismuth083.Utility.Save
       }
       catch(Exception e)
       {
-        throw new IOException("無効なフォルダパスです。", e);
+        throw new ArgumentException("無効なフォルダパスです。",nameof(directoryPath), e);
       }
 
       // パスワードの設定
@@ -74,7 +75,7 @@ namespace Bismuth083.Utility.Save
           }
           textEncryptor = null;
           break;
-          throw new ArgumentException("解釈できない列挙子を検出しました。", nameof(saveMode));
+          throw new Exception("解釈できない列挙子を検出しました。");
       }
 
       this.saveMode = saveMode;
@@ -143,6 +144,11 @@ namespace Bismuth083.Utility.Save
           return IOStatus.UnknownError;
         }
       }
+
+      // 目的のファイル名にリネーム
+      
+
+
 
       return IOStatus.Success;
 
@@ -290,7 +296,7 @@ namespace Bismuth083.Utility.Save
       if (!File.Exists(filePath)) return IOStatus.FileNotFound;
       else if (File.Exists(newFilePath) && !allowOverWrite) return IOStatus.AlreadyExists;
       try {
-        File.Copy(filePath, newFilePath); 
+        File.Copy(filePath, newFilePath,true); 
       }
       catch
       {
