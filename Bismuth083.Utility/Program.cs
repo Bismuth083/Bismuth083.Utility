@@ -32,7 +32,7 @@ internal class Program
     saveDataManager.Save<DataSet>(dataSet, "User/01");
 
     // ロード
-    DataSet dataset = saveDataManager.Load<DataSet>("01").Item2!;
+    DataSet dataset = saveDataManager.Load<DataSet>("01").saveData!;
 
     // ロードデータの確認
     Console.WriteLine(dataset);
@@ -73,9 +73,16 @@ internal class Program
 
     // 削除の検証
     Console.WriteLine(saveDataManager.DeleteSlot("User/01").ToString());
-    Console.WriteLine(saveDataManager.DeleteSlot("User/04").ToString());
-    Console.WriteLine(saveDataManager.DeleteSlot("User.01").ToString());
+    Console.WriteLine(saveDataManager.DeleteSlot("User/04").ToString() + "    expected: NotFound");
+    Console.WriteLine(saveDataManager.DeleteSlot("User.01").ToString() + "    expected: InvalidSlotName");
 
+    // ファイル名一覧
+    foreach (string slot in saveDataManager.GetSlotNames())
+    {
+      Console.WriteLine(slot);
+    }
+
+    // 全消去
     saveDataManager.DeleteAllSlots();
 
     sw.Stop(); Console.WriteLine(sw.Elapsed); //Timer

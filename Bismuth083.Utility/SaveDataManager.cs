@@ -21,7 +21,6 @@ namespace Bismuth083.Utility.Save
   public sealed class SaveDataManager
   {
     // TODO: テストケースの作成。
-    // TODO: Saveは「Tempファイル->目的のファイルにRename」で行う。
     // TODO: SaveからSerialize、LoadからDeserializeを分離する。
     // TODO: そもそもクラス自体をシリアライザとマネージャに分離したい。
     // TODO: クラスのExample、メソッドのTparamの説明。その他説明手直し。
@@ -35,6 +34,8 @@ namespace Bismuth083.Utility.Save
 		private readonly SaveMode saveMode;
     private readonly bool canDeleteAllSlots;
     private readonly TextEncryptor? textEncryptor;
+    private readonly Random rand;
+    private const string EXTENTION = ".sav";
 
     /// <summary>
     /// SaveDataManagerのコンストラクター。ディレクトリのパスとPassWordを指定してください。
@@ -80,6 +81,7 @@ namespace Bismuth083.Utility.Save
 
       this.saveMode = saveMode;
       this.canDeleteAllSlots = canDeleteAllSlots;
+      this.rand = new Random();
     }
 
     /// <summary>
@@ -101,18 +103,20 @@ namespace Bismuth083.Utility.Save
       string filePath = FileUtility.SlotNameToPath(slotName, DirectoryPath);
 
       // シリアライズ、(暗号化が必要ならば暗号化)
-      string saveDataText = JsonSerializer.Serialize(record, this.jsonOptions);
+      string rawSaveDataText = JsonSerializer.Serialize(record, this.jsonOptions);
+      string saveDataText = string.Empty;
       switch (saveMode)
       {
         case SaveMode.Encrypted:
-          saveDataText = textEncryptor!.Encrypt(saveDataText);
+          saveDataText = textEncryptor!.Encrypt(rawSaveDataText);
           break;
         case SaveMode.UnEncrypted:
+          saveDataText = rawSaveDataText;
           break;
       }
 
-      // ローカルフォルダに保存、ディレクトリが存在しない場合作成
-      string directoryToBeSaved = Path.GetDirectoryName(filePath)!;
+      // TempFileに保存、ディレクトリが存在しない場合作成
+      string directoryToBeSaved = FileUtility.NormalizeDirectoryPath(Path.GetDirectoryName(filePath)!);
       try
       {
         Directory.CreateDirectory(directoryToBeSaved);
@@ -122,43 +126,37 @@ namespace Bismuth083.Utility.Save
         return IOStatus.CouldNotAccess;
       }
 
+      string tempFilePath = string.Empty;
+
+      for (int i = 0; i < 100; i++)
+      {
+        tempFilePath = directoryToBeSaved + $"TEMPFILE_{slotName.Replace("/","_")}_{rand.Next()}{EXTENTION}";
+        if (!File.Exists(tempFilePath)!) break;
+      }
+
       try
       {
-        File.WriteAllText(filePath, saveDataText);
+        File.WriteAllText(tempFilePath, saveDataText);
       }
       catch
       {
         return IOStatus.CouldNotAccess;
       }
 
-      // セーブデータが正しいか検証
+      // セーブデータが正しいか検証。正しければ目的のファイルに保存する。
       if (shouldCheckSaveData)
       {
-        var saved = Load<T>(slotName);
-        if(saved.status == 0 && JsonSerializer.Serialize(saved, this.jsonOptions) == saveDataText)
-        {
-          return IOStatus.Success;
-        }
+        var saved = Load<T>(FileUtility.FileNameToSlotName(tempFilePath , DirectoryPath)!,false);
+        if (saved.status == IOStatus.Success && JsonSerializer.Serialize(saved.saveData, jsonOptions) == rawSaveDataText){ }
         else
         {
+          File.Delete(tempFilePath);
           return IOStatus.UnknownError;
         }
       }
-
-      // 目的のファイル名にリネーム
-      
-
-
-
+      File.Copy(tempFilePath, filePath, true);
+      File.Delete(tempFilePath);
       return IOStatus.Success;
-
-      //using (var sw = new StreamWriter(filePath, false, Encoding.UTF8))
-      //using (var ws = TextWriter.Synchronized(sw))
-      //{
-      //  ws.WriteLine(saveDataText);
-      //}
-      //
-      // あかんかったらこれで非同期処理をなんとかする。
     }
 
     /// <summary>
@@ -296,7 +294,7 @@ namespace Bismuth083.Utility.Save
       if (!File.Exists(filePath)) return IOStatus.FileNotFound;
       else if (File.Exists(newFilePath) && !allowOverWrite) return IOStatus.AlreadyExists;
       try {
-        File.Copy(filePath, newFilePath,true); 
+        File.Copy(filePath, newFilePath,true);
       }
       catch
       {
@@ -383,6 +381,7 @@ namespace Bismuth083.Utility.Save
 
   internal static class FileUtility
   {
+    private const string EXTENTION = ".sav";
     internal static bool ValidateSlotName(string slotName)
     {
       // 先頭、最後尾に/を付けず、かつフォルダパスとして合法な書き方のみtrue。
@@ -397,7 +396,7 @@ namespace Bismuth083.Utility.Save
       string? slotName;
       if (fileName.Contains(".sav"))
       {
-        slotName = fileName.Substring(0, fileName.IndexOf(".sav")).Replace(directoryPath, "");
+        slotName = fileName.Substring(0, fileName.IndexOf(EXTENTION)).Replace(directoryPath, "");
         return slotName;
       }
       else
@@ -416,7 +415,7 @@ namespace Bismuth083.Utility.Save
 
     internal static string SlotNameToPath(string slotName, string directoryPath)
     {
-      return String.Concat(directoryPath, slotName, ".sav");
+      return String.Concat(directoryPath, slotName, EXTENTION);
     }
   }
 }
