@@ -34,7 +34,6 @@ namespace Bismuth083.Utility.Save
 		private readonly SaveMode saveMode;
     private readonly bool canDeleteAllSlots;
     private readonly TextEncryptor? textEncryptor;
-    private readonly Random rand;
     private const string EXTENTION = ".sav";
 
     /// <summary>
@@ -81,7 +80,6 @@ namespace Bismuth083.Utility.Save
 
       this.saveMode = saveMode;
       this.canDeleteAllSlots = canDeleteAllSlots;
-      this.rand = new Random();
     }
 
     /// <summary>
@@ -130,7 +128,7 @@ namespace Bismuth083.Utility.Save
 
       for (int i = 0; i < 100; i++)
       {
-        tempFilePath = directoryToBeSaved + $"TEMPFILE_{slotName.Replace("/","_")}_{rand.Next()}{EXTENTION}";
+        tempFilePath = directoryToBeSaved + $"TEMPFILE_{slotName.Replace("/","_")}{EXTENTION}";
         if (!File.Exists(tempFilePath)!) break;
       }
 
